@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "935279109591",
+    "project_id": "mata-vision-aid-74a74",
+    "storage_bucket": "mata-vision-aid-74a74.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:935279109591:android:6c63acf19fabcf19061792",
+        "android_client_info": {
+          "package_name": "com.example.dummy_groovy_project"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2xk6ZnXlyH4hpd1bPSJa_PZyIJ6s2FP4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:935279109591:android:908246715cdbb75d061792",
+        "android_client_info": {
+          "package_name": "com.swe3.MATA"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2xk6ZnXlyH4hpd1bPSJa_PZyIJ6s2FP4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
