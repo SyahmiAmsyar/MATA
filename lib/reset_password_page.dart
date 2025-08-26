@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   const ResetPasswordPage({super.key});
@@ -10,33 +12,49 @@ class ResetPasswordPage extends StatefulWidget {
 class _ResetPasswordPageState extends State<ResetPasswordPage> {
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
-      TextEditingController();
+  TextEditingController();
 
-  void _updatePassword() {
+  Future<void> _updatePassword() async {
     String newPassword = _newPasswordController.text.trim();
     String confirmPassword = _confirmPasswordController.text.trim();
 
     if (newPassword.isEmpty || confirmPassword.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
 
     if (newPassword != confirmPassword) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Passwords do not match')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Passwords do not match')));
       return;
     }
 
-    // TODO: Handle actual password update logic here
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // ✅ Update password in Firebase Auth
+        await user.updatePassword(newPassword);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Password Updated Successfully')),
-    );
+        // ✅ Update Firestore (optional, for tracking password)
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({"password": newPassword});
 
-    Navigator.pop(context); // Go back to ProfilePage
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Password Updated Successfully')),
+        );
+
+        Navigator.pop(context); // Go back to ProfilePage
+      }
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: ${e.message}")));
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Unexpected error: $e")));
+    }
   }
 
   @override
