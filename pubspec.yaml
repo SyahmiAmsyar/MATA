@@ -52,6 +52,17 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # Package used to generate custom app icons for both Android and iOS
+  flutter_launcher_icons: ^0.13.1
+
+# Configuration for flutter_launcher_icons
+# This block tells the package which platforms to generate icons for
+# and where your logo file is located.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo_mata2.png" # <-- this is your icon image
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -65,9 +76,7 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-      
-      
-      - assets/logo_mata1.png
+    - assets/logo_mata1.png
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
@@ -95,5 +104,3 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
-
-
