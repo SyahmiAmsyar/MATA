@@ -10,33 +10,47 @@ class ResetPasswordPage extends StatefulWidget {
 }
 
 class _ResetPasswordPageState extends State<ResetPasswordPage> {
+  final TextEditingController _oldPasswordController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-  TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+
+  // 👁️ state for toggling password visibility
+  bool _obscureOld = true;
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
 
   Future<void> _updatePassword() async {
+    String oldPassword = _oldPasswordController.text.trim();
     String newPassword = _newPasswordController.text.trim();
     String confirmPassword = _confirmPasswordController.text.trim();
 
-    if (newPassword.isEmpty || confirmPassword.isEmpty) {
+    if (oldPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
 
     if (newPassword != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Passwords do not match')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Passwords do not match')));
       return;
     }
 
     try {
       User? user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        // ✅ Update password in Firebase Auth
+
+      if (user != null && user.email != null) {
+        // ✅ Step 1: Re-authenticate user with old password
+        AuthCredential credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: oldPassword,
+        );
+        await user.reauthenticateWithCredential(credential);
+
+        // ✅ Step 2: Update password in Firebase Auth
         await user.updatePassword(newPassword);
 
-        // ✅ Update Firestore (optional, for tracking password)
+        // ⚠️ Optional (not recommended in production)
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -85,13 +99,32 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 ),
               ),
               const SizedBox(height: 30),
-              _buildPasswordField('New Password', _newPasswordController),
+
+              // ✅ Password fields with toggle
+              _buildPasswordField(
+                'Old Password',
+                _oldPasswordController,
+                _obscureOld,
+                    () => setState(() => _obscureOld = !_obscureOld),
+              ),
               const SizedBox(height: 20),
+
+              _buildPasswordField(
+                'New Password',
+                _newPasswordController,
+                _obscureNew,
+                    () => setState(() => _obscureNew = !_obscureNew),
+              ),
+              const SizedBox(height: 20),
+
               _buildPasswordField(
                 'Confirm Password',
                 _confirmPasswordController,
+                _obscureConfirm,
+                    () => setState(() => _obscureConfirm = !_obscureConfirm),
               ),
               const SizedBox(height: 30),
+
               ElevatedButton(
                 onPressed: _updatePassword,
                 style: ElevatedButton.styleFrom(
@@ -106,6 +139,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   style: TextStyle(color: Colors.white, fontSize: 16),
                 ),
               ),
+
               const Spacer(),
               const Icon(
                 Icons.shield_outlined,
@@ -119,7 +153,13 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     );
   }
 
-  Widget _buildPasswordField(String label, TextEditingController controller) {
+  // 🔑 Reusable field with show/hide toggle
+  Widget _buildPasswordField(
+      String label,
+      TextEditingController controller,
+      bool obscureText,
+      VoidCallback toggleVisibility,
+      ) {
     return Row(
       children: [
         SizedBox(
@@ -131,15 +171,23 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
         ),
         Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
             decoration: BoxDecoration(
               color: Colors.grey[300],
               borderRadius: BorderRadius.circular(10),
             ),
             child: TextField(
               controller: controller,
-              obscureText: true,
-              decoration: const InputDecoration(border: InputBorder.none),
+              obscureText: obscureText,
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    obscureText ? Icons.visibility_off : Icons.visibility,
+                  ),
+                  onPressed: toggleVisibility,
+                ),
+              ),
             ),
           ),
         ),
