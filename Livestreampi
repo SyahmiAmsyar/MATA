@@ -1,0 +1,80 @@
+# picam2_stream_minimal.py
+from picamera2 import Picamera2
+import cv2
+from flask import Flask, Response, request, jsonify
+import threading
+import time
+
+# -------------------
+# Flask app
+# -------------------
+app = Flask(__name__)
+
+# -------------------
+# Initialize Pi Camera
+# -------------------
+try:
+    picam2 = Picamera2()
+    picam2.start()
+except RuntimeError as e:
+    print(f"❌ Camera init failed: {e}")
+    exit(1)
+
+# -------------------
+# Streaming flag
+# -------------------
+stream_active = True  # set True to always stream for testing
+
+# -------------------
+# Video generator
+# -------------------
+def generate_frames():
+    global stream_active
+    while True:
+        if stream_active:
+            frame = picam2.capture_array()
+            # Convert color (BGR -> RGB)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Encode as JPEG
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_bytes = buffer.tobytes()
+            # Yield multipart frame
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        else:
+            time.sleep(0.1)
+
+# -------------------
+# Video feed route for WebView/browser
+# -------------------
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+# -------------------
+# Optional start/stop control via POST
+# -------------------
+@app.route('/stream', methods=['POST'])
+def stream_control():
+    global stream_active
+    data = request.get_json()
+    if not data or 'action' not in data:
+        return jsonify({"status": "error", "message": "No action provided"}), 400
+
+    action = data['action'].lower()
+    if action == 'start':
+        stream_active = True
+    elif action == 'stop':
+        stream_active = False
+    else:
+        return jsonify({"status": "error", "message": "Unknown action"}), 400
+
+    return jsonify({"status": "ok", "stream_active": stream_active})
+
+# -------------------
+# Main
+# -------------------
+if __name__ == "__main__":
+    print("🚀 Picamera2 Flask MJPEG Streaming starting...")
+    app.run(host="0.0.0.0", port=5000)
