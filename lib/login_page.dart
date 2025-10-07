@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'signup_page.dart';
 import 'dashboard_page.dart';
 
@@ -15,147 +16,252 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  String? errorText;
+  bool _obscurePassword = true;
+  bool _isLoading = false;
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please fill in all fields.")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
     try {
-      // Sign in with Firebase
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      setState(() => errorText = null);
+      // Save login state
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('loggedIn', true);
 
-      // Navigate to Dashboard
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Login successful!")),
+      );
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const DashboardPage()),
       );
     } on FirebaseAuthException catch (e) {
-      setState(() => errorText = e.message);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? "Login failed")),
+      );
     } catch (e) {
-      setState(() => errorText = "Something went wrong. Try again.");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Something went wrong. Try again.")),
+      );
+    } finally {
+      setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _resetPassword() async {
+    final emailController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Reset Password"),
+        content: TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(hintText: "Enter your email"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final email = emailController.text.trim();
+              if (email.isNotEmpty) {
+                try {
+                  await FirebaseAuth.instance
+                      .sendPasswordResetEmail(email: email);
+                  Navigator.pop(context);
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text("Password reset link sent!")),
+                  );
+                } on FirebaseAuthException catch (e) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(e.message ?? "Error occurred")),
+                  );
+                }
+              }
+            },
+            child: const Text("Send"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0073B1),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 30.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Text(
-                'M.A.T.A',
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 2,
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF0073B1), Color(0xFF004C75)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 25.0),
+            child: Column(
+              children: [
+                const Text(
+                  'M.A.T.A',
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 2,
+                  ),
                 ),
-              ),
-              const Text(
-                'VISION MOBILE\nAPPLICATION',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                  letterSpacing: 1,
+                const SizedBox(height: 8),
+                const Text(
+                  'VISION MOBILE APPLICATION',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: 1,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Image.asset('assets/logo_mata1.png', width: 200, height: 200),
-              const SizedBox(height: 20),
-              const Text(
-                'Guiding You,\nEvery Step of the Way',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20, color: Colors.white),
-              ),
-              const SizedBox(height: 30),
-              _buildInputField('Email:', _emailController),
-              const SizedBox(height: 15),
-              _buildInputField('Password:', _passwordController, obscure: true),
-              if (errorText != null) ...[
-                const SizedBox(height: 10),
-                Text(errorText!, style: const TextStyle(color: Colors.red)),
-              ],
-              const SizedBox(height: 25),
-              _buildButton('LOGIN', _login),
-              const SizedBox(height: 10),
-              _buildButton('BACK', () {
-                Navigator.pop(context);
-              }),
-              const SizedBox(height: 15),
-              TextButton(
-                onPressed: () {
-                  // Implement Forgot Password if needed
-                },
-                child: const Text('Forgot Password?', style: TextStyle(color: Colors.white)),
-              ),
-              const SizedBox(height: 5),
-              RichText(
-                text: TextSpan(
-                  text: "Don’t have an account? ",
-                  style: const TextStyle(color: Colors.white),
-                  children: [
-                    TextSpan(
-                      text: "Sign up",
-                      style: const TextStyle(color: Colors.orange),
-                      recognizer: TapGestureRecognizer()
-                        ..onTap = () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const SignUpPage()),
-                          );
-                        },
+                const SizedBox(height: 20),
+                Image.asset('assets/logo_mata1.png', width: 150, height: 150),
+                const SizedBox(height: 20),
+                const Text(
+                  'Guiding You,\nEvery Step of the Way',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, color: Colors.white70),
+                ),
+                const SizedBox(height: 30),
+                Card(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                  elevation: 8,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      children: [
+                        _buildInputField(
+                          "Email",
+                          _emailController,
+                          icon: Icons.email,
+                        ),
+                        const SizedBox(height: 15),
+                        _buildPasswordField(),
+                        const SizedBox(height: 20),
+                        _isLoading
+                            ? const CircularProgressIndicator()
+                            : _buildButton("LOGIN", _login),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: _resetPassword,
+                          child: const Text("Forgot Password?"),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 15),
+                RichText(
+                  text: TextSpan(
+                    text: "Don’t have an account? ",
+                    style: const TextStyle(color: Colors.white),
+                    children: [
+                      TextSpan(
+                        text: "Sign up",
+                        style: const TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold),
+                        recognizer: TapGestureRecognizer()
+                          ..onTap = () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) => const SignUpPage()),
+                            );
+                          },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildInputField(String label, TextEditingController controller, {bool obscure = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+  Widget _buildInputField(String label, TextEditingController controller,
+      {IconData? icon}) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        prefixIcon: Icon(icon, color: Colors.blueAccent),
+        labelText: label,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+        ),
       ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscure,
-        decoration: InputDecoration(border: InputBorder.none, labelText: label),
+    );
+  }
+
+  Widget _buildPasswordField() {
+    return TextField(
+      controller: _passwordController,
+      obscureText: _obscurePassword,
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.lock, color: Colors.blueAccent),
+        labelText: "Password",
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+        ),
+        suffixIcon: IconButton(
+          icon: Icon(
+              _obscurePassword ? Icons.visibility_off : Icons.visibility),
+          onPressed: () {
+            setState(() => _obscurePassword = !_obscurePassword);
+          },
+        ),
       ),
     );
   }
 
   Widget _buildButton(String text, VoidCallback onPressed) {
-    return Center(
-      child: SizedBox(
-        width: 200,
-        child: ElevatedButton(
-          onPressed: onPressed,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.grey[300],
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
-          child: Text(text, style: const TextStyle(color: Colors.black)),
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blueAccent,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(fontSize: 16, color: Colors.white),
         ),
       ),
     );
