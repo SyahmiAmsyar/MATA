@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ Added for Firestore
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'signup_page.dart';
 import 'dashboard_page.dart';
 
@@ -33,19 +35,36 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // ✅ Firebase sign-in
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
 
-      // Save login state
+      final uid = userCredential.user!.uid;
+
+      // ✅ Fetch username from Firestore
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+
+      String username = "User";
+      if (snapshot.exists && snapshot.data()!.containsKey('username')) {
+        username = snapshot.data()!['username'];
+      } else {
+        // fallback: take email prefix
+        username = email.contains('@') ? email.split('@')[0] : email;
+      }
+
+      // ✅ Save login state and username
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('loggedIn', true);
+      await prefs.setString('username', username);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Login successful!")),
+        SnackBar(content: Text("Welcome, $username!")),
       );
 
+      // ✅ Navigate to Dashboard
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const DashboardPage()),
@@ -256,8 +275,9 @@ class _LoginPageState extends State<LoginPage> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blueAccent,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
         ),
         child: Text(
           text,
