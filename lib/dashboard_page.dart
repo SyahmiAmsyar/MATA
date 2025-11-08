@@ -25,8 +25,8 @@ class _DashboardPageState extends State<DashboardPage>
   bool _isDeviceConnected = true;
   bool _liveFootageForced = false;
 
-  // ✅ Change this to your Pi IP
-  final String piUrl = "http://172.20.10.10:5000";
+  String _username = "";
+  final String piUrl = "http://172.20.10.10:5000"; // ✅ Pi IP or ngrok URL
 
   late AnimationController _controller;
   late Animation<double> _pulseAnimation;
@@ -34,10 +34,9 @@ class _DashboardPageState extends State<DashboardPage>
   @override
   void initState() {
     super.initState();
+    _loadUsername();
     _updateBatteryLevel();
-    _battery.onBatteryStateChanged.listen((BatteryState state) {
-      _updateBatteryLevel();
-    });
+    _battery.onBatteryStateChanged.listen((_) => _updateBatteryLevel());
 
     _controller = AnimationController(
       vsync: this,
@@ -49,15 +48,20 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
+  Future<void> _loadUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _username = prefs.getString('username') ?? 'User');
+  }
+
   Future<void> _updateBatteryLevel() async {
     final level = await _battery.batteryLevel;
     if (mounted) setState(() => _batteryLevel = level);
   }
 
-  // ✅ Logout with clearing login state
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('loggedIn'); // Clear login flag
+    await prefs.remove('loggedIn');
+    await prefs.remove('username');
 
     Navigator.pushReplacement(
       context,
@@ -65,13 +69,15 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
+  /// ✅ Toggle live stream start / stop safely
   Future<void> _toggleLiveFootageForce() async {
     final action = _liveFootageForced ? "stop" : "start";
-    try {
-      print("📡 Sending $action request to $piUrl/stream ...");
+    final url = Uri.parse("$piUrl/stream");
 
+    try {
+      print("📡 Sending $action request to $url ...");
       final res = await http.post(
-        Uri.parse("$piUrl/stream"),
+        url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"action": action}),
       );
@@ -79,26 +85,29 @@ class _DashboardPageState extends State<DashboardPage>
       print("✅ Response ${res.statusCode}: ${res.body}");
 
       if (res.statusCode == 200) {
-        setState(() => _liveFootageForced = !_liveFootageForced);
-
         if (!_liveFootageForced) {
-          Navigator.pop(context); // Close stream page if turning OFF
-        } else {
-          // ✅ Open stream page — Pi usually serves video on /video_feed
-          Navigator.push(
+          // ✅ Starting the stream
+          setState(() => _liveFootageForced = true);
+
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => LiveStreamPage(
                 streamUrl: "$piUrl/video_feed",
+                onStop: () => setState(() => _liveFootageForced = false),
               ),
             ),
           );
+        } else {
+          // ✅ Stopping the stream
+          setState(() => _liveFootageForced = false);
+          _showSnackBar("Live stream stopped.");
         }
       } else {
         _showSnackBar("Failed to toggle stream: ${res.statusCode}");
       }
     } catch (e) {
-      print("❌ Error while toggling stream: $e");
+      print("❌ Error: $e");
       _showSnackBar("Error: $e");
     }
   }
@@ -115,7 +124,7 @@ class _DashboardPageState extends State<DashboardPage>
 
   @override
   Widget build(BuildContext context) {
-    final double cardHeight = 120;
+    const double cardHeight = 120;
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -125,10 +134,10 @@ class _DashboardPageState extends State<DashboardPage>
         actions: [
           IconButton(
             icon: const Icon(Icons.person),
-            onPressed: () {
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => const ProfilePage()));
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ProfilePage()),
+            ),
           ),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
@@ -138,13 +147,13 @@ class _DashboardPageState extends State<DashboardPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "👋 Welcome back, Syahmi!",
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            Text(
+              "👋 Welcome back, $_username!",
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
 
-            // Status Cards Row
+            // Connection & Battery Cards
             SizedBox(
               height: cardHeight,
               child: Row(
@@ -176,32 +185,30 @@ class _DashboardPageState extends State<DashboardPage>
 
             const SizedBox(height: 24),
 
-            // Quick Action Buttons
+            // Action Buttons
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildActionButton(
                   icon: Icons.location_on,
                   label: "Live GPS",
-                  onTap: () {
-                    Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const LiveGpsPage()));
-                  },
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LiveGpsPage()),
+                  ),
                 ),
                 _buildActionButton(
                   icon: Icons.history,
                   label: "History",
-                  onTap: () {
-                    Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const HistoryPage()));
-                  },
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HistoryPage()),
+                  ),
                 ),
                 _buildActionButton(
-                  icon: _liveFootageForced ? Icons.videocam : Icons.videocam_off,
+                  icon: _liveFootageForced
+                      ? Icons.videocam
+                      : Icons.videocam_off,
                   label: _liveFootageForced ? "Stop Live" : "Start Live",
                   onTap: _toggleLiveFootageForce,
                   color: _liveFootageForced ? Colors.red : Colors.green,
@@ -211,7 +218,7 @@ class _DashboardPageState extends State<DashboardPage>
 
             const SizedBox(height: 24),
 
-            // Recent Activity / Placeholder
+            // Recent Activity
             Expanded(
               child: Card(
                 shape: RoundedRectangleBorder(
@@ -222,11 +229,9 @@ class _DashboardPageState extends State<DashboardPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        "Recent Activity",
-                        style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
+                      const Text("Recent Activity",
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 12),
                       Expanded(
                         child: ListView(
@@ -260,7 +265,7 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  // Gradient Status Card
+  // Status Cards
   Widget _buildGradientCard({
     required String title,
     required String value,
@@ -286,26 +291,22 @@ class _DashboardPageState extends State<DashboardPage>
           children: [
             FaIcon(icon, color: Colors.white, size: 28),
             const SizedBox(height: 8),
-            Text(
-              title,
-              style: const TextStyle(
-                  color: Colors.white70, fontWeight: FontWeight.w600),
-            ),
+            Text(title,
+                style: const TextStyle(
+                    color: Colors.white70, fontWeight: FontWeight.w600)),
             const SizedBox(height: 5),
-            Text(
-              value,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold),
-            ),
+            Text(value,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold)),
           ],
         ),
       ),
     );
   }
 
-  // Quick Action Button
+  // Buttons
   Widget _buildActionButton({
     required IconData icon,
     required String label,
@@ -345,10 +346,16 @@ class _DashboardPageState extends State<DashboardPage>
   }
 }
 
-// ✅ LiveStreamPage with WebViewController
+// ✅ Safe Live Stream Page
 class LiveStreamPage extends StatefulWidget {
   final String streamUrl;
-  const LiveStreamPage({super.key, required this.streamUrl});
+  final VoidCallback onStop;
+
+  const LiveStreamPage({
+    super.key,
+    required this.streamUrl,
+    required this.onStop,
+  });
 
   @override
   State<LiveStreamPage> createState() => _LiveStreamPageState();
@@ -356,6 +363,7 @@ class LiveStreamPage extends StatefulWidget {
 
 class _LiveStreamPageState extends State<LiveStreamPage> {
   late final WebViewController _controller;
+  bool _isStopping = false;
 
   @override
   void initState() {
@@ -365,10 +373,39 @@ class _LiveStreamPageState extends State<LiveStreamPage> {
       ..loadRequest(Uri.parse(widget.streamUrl));
   }
 
+  Future<void> _stopStream() async {
+    if (_isStopping) return;
+    setState(() => _isStopping = true);
+
+    try {
+      final res = await http.post(
+        Uri.parse("http://172.20.10.10:5000/stream"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"action": "stop"}),
+      );
+      print("🔴 Stream stop response: ${res.body}");
+    } catch (e) {
+      print("❌ Error stopping stream: $e");
+    }
+
+    widget.onStop(); // update dashboard state
+    if (mounted) Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Live Stream")),
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text("Live Stream"),
+        backgroundColor: Colors.black,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.stop, color: Colors.red),
+            onPressed: _stopStream,
+          ),
+        ],
+      ),
       body: WebViewWidget(controller: _controller),
     );
   }
