@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -12,15 +13,17 @@ class LiveGpsPage extends StatefulWidget {
 
 class _LiveGpsPageState extends State<LiveGpsPage> {
   late DatabaseReference dbRef;
-  LatLng? currentPosition;
-  Set<Marker> markers = {};
   GoogleMapController? mapController;
+  LatLng? currentPosition;
+  LatLng? lastPosition;
+  Marker? liveMarker;
+
+  bool autoFollow = true; // ✅ Auto-follow camera toggle
 
   @override
   void initState() {
     super.initState();
 
-    // ✅ Use correct database region
     final db = FirebaseDatabase.instanceFor(
       app: Firebase.app(),
       databaseURL:
@@ -28,44 +31,75 @@ class _LiveGpsPageState extends State<LiveGpsPage> {
     );
 
     dbRef = db.ref("location");
-
     listenToLocation();
   }
 
-  /// Listen to Firebase location changes in real-time
+  /// ✅ Listen to real-time GPS location updates
   void listenToLocation() {
     dbRef.onValue.listen((event) {
       final data = event.snapshot.value as Map?;
-      if (data != null) {
-        double lat = double.parse(data["lat"].toString());
-        double lon = double.parse(data["lon"].toString());
-
-        setState(() {
-          currentPosition = LatLng(lat, lon);
-          markers = {
-            Marker(
-              markerId: const MarkerId("userLocation"),
-              position: currentPosition!,
-              infoWindow: const InfoWindow(title: "User Location"),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueBlue, // ✅ Blue marker
-              ),
-            )
-          };
-        });
-
-        // Move camera when new data arrives
-        if (mapController != null && currentPosition != null) {
-          mapController!.animateCamera(
-            CameraUpdate.newLatLng(currentPosition!),
-          );
-        }
-
-        debugPrint("Fetched location: lat=$lat, lon=$lon");
-      } else {
-        debugPrint("No location data in Firebase!");
+      if (data == null) {
+        debugPrint("⚠️ No location data in Firebase!");
+        return;
       }
+
+      double lat = double.parse(data["lat"].toString());
+      double lon = double.parse(data["lon"].toString());
+      final newPosition = LatLng(lat, lon);
+
+      debugPrint("📍 Updated location: $lat, $lon");
+
+      // Animate marker smoothly
+      _animateMarkerTo(newPosition);
     });
+  }
+
+  /// ✅ Smoothly animate marker movement
+  Future<void> _animateMarkerTo(LatLng newPosition) async {
+    if (currentPosition == null) {
+      // First time location
+      setState(() {
+        currentPosition = newPosition;
+        liveMarker = Marker(
+          markerId: const MarkerId("userLocation"),
+          position: newPosition,
+          infoWindow: const InfoWindow(title: "MATA Glasses Location"),
+          icon:
+          BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        );
+      });
+      return;
+    }
+
+    // Animate between old and new position
+    const int steps = 20;
+    const Duration stepDuration = Duration(milliseconds: 100);
+    final latDiff = (newPosition.latitude - currentPosition!.latitude) / steps;
+    final lonDiff = (newPosition.longitude - currentPosition!.longitude) / steps;
+
+    for (int i = 0; i <= steps; i++) {
+      await Future.delayed(stepDuration);
+      final lat = currentPosition!.latitude + (latDiff * i);
+      final lon = currentPosition!.longitude + (lonDiff * i);
+      final interpolated = LatLng(lat, lon);
+
+      setState(() {
+        currentPosition = interpolated;
+        liveMarker = Marker(
+          markerId: const MarkerId("userLocation"),
+          position: interpolated,
+          infoWindow: const InfoWindow(title: "MATA Glasses Location"),
+          icon:
+          BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        );
+      });
+
+      if (autoFollow && mapController != null) {
+        mapController!.animateCamera(
+          CameraUpdate.newLatLng(interpolated),
+        );
+      }
+    }
   }
 
   @override
@@ -73,7 +107,27 @@ class _LiveGpsPageState extends State<LiveGpsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Live GPS Tracking"),
-        backgroundColor: const Color(0xFF0073B1), // ✅ Matches theme
+        backgroundColor: const Color(0xFF0073B1),
+        actions: [
+          IconButton(
+            icon: Icon(
+              autoFollow ? Icons.gps_fixed : Icons.gps_not_fixed,
+              color: Colors.white,
+            ),
+            onPressed: () {
+              setState(() {
+                autoFollow = !autoFollow;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(autoFollow
+                      ? "Auto-follow enabled"
+                      : "Auto-follow disabled"),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: currentPosition == null
           ? const Center(child: CircularProgressIndicator())
@@ -82,16 +136,16 @@ class _LiveGpsPageState extends State<LiveGpsPage> {
           GoogleMap(
             initialCameraPosition: CameraPosition(
               target: currentPosition!,
-              zoom: 16,
+              zoom: 17,
             ),
-            markers: markers,
+            markers: liveMarker != null ? {liveMarker!} : {},
             onMapCreated: (controller) {
               mapController = controller;
             },
-            zoomControlsEnabled: false, // hide default +/- buttons
+            zoomControlsEnabled: false,
+            myLocationButtonEnabled: false,
+            mapType: MapType.normal,
           ),
-
-          // ✅ Floating recenter button
           Positioned(
             bottom: 20,
             right: 20,
