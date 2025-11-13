@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'reset_password_page.dart';
 import 'login_page.dart';
@@ -24,6 +25,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isDeleting = false;
   String? _profileImageUrl;
   File? _selectedImage;
+  bool _isUploadingPhoto = false;
 
   final ImagePicker _picker = ImagePicker();
 
@@ -67,13 +69,44 @@ class _ProfilePageState extends State<ProfilePage> {
     if (image != null) {
       setState(() {
         _selectedImage = File(image.path);
+        _isUploadingPhoto = true;
       });
+
+      final uploadedUrl = await _uploadProfileImage(_selectedImage!);
+
+      if (uploadedUrl != null) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+            "profileImageUrl": uploadedUrl,
+          }, SetOptions(merge: true));
+
+          setState(() {
+            _profileImageUrl = uploadedUrl;
+            _selectedImage = null;
+            _isUploadingPhoto = false;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text("✅ Profile photo updated successfully!")),
+          );
+        }
+      } else {
+        setState(() => _isUploadingPhoto = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("❌ Failed to upload profile photo.")),
+        );
+      }
     }
   }
 
   Future<String?> _uploadProfileImage(File image) async {
     try {
-      final cloudName = 'dxfiwjj1p';       // Replace with your Cloudinary Cloud Name
+      final cloudName = 'dxfiwjj1p'; // Replace with your Cloudinary Cloud Name
       final uploadPreset = 'flutter_unsigned'; // Replace with your unsigned preset
 
       final uri = Uri.parse(
@@ -99,20 +132,10 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-
   Future<void> _updateProfile() async {
     try {
       User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        String? imageUrl = _profileImageUrl;
-
-        // Upload new image if selected
-        if (_selectedImage != null) {
-          final uploadedUrl = await _uploadProfileImage(_selectedImage!);
-          if (uploadedUrl != null) imageUrl = uploadedUrl;
-        }
-
-        // Save data in Firestore
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -120,14 +143,13 @@ class _ProfilePageState extends State<ProfilePage> {
           "name": _nameController.text.trim(),
           "username": _usernameController.text.trim(),
           "email": email,
-          "profileImageUrl": imageUrl,
         }, SetOptions(merge: true));
 
-        setState(() {
-          _isEditing = false;
-          _profileImageUrl = imageUrl;
-          _selectedImage = null;
-        });
+        // Also store updated username locally
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('username', _usernameController.text.trim());
+
+        setState(() => _isEditing = false);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("✅ Profile updated successfully!")),
@@ -139,7 +161,6 @@ class _ProfilePageState extends State<ProfilePage> {
       );
     }
   }
-
 
   Future<void> _deleteAccount() async {
     try {
@@ -235,12 +256,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     CircleAvatar(
                       radius: 50,
                       backgroundColor: Colors.white,
-                      backgroundImage: _selectedImage != null
-                          ? FileImage(_selectedImage!)
-                          : _profileImageUrl != null
+                      backgroundImage: _profileImageUrl != null
                           ? NetworkImage(_profileImageUrl!) as ImageProvider
                           : null,
-                      child: (_profileImageUrl == null && _selectedImage == null)
+                      child: (_profileImageUrl == null)
                           ? const Icon(Icons.person,
                           size: 60, color: Colors.blueAccent)
                           : null,
@@ -249,18 +268,24 @@ class _ProfilePageState extends State<ProfilePage> {
                       bottom: 0,
                       right: 0,
                       child: InkWell(
-                        onTap: _pickImage,
+                        onTap: _isUploadingPhoto ? null : _pickImage,
                         child: const CircleAvatar(
                           radius: 16,
                           backgroundColor: Colors.orange,
-                          child: Icon(Icons.edit, size: 18, color: Colors.white),
+                          child:
+                          Icon(Icons.edit, size: 18, color: Colors.white),
                         ),
                       ),
                     ),
                   ],
                 ),
+                if (_isUploadingPhoto)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: CircularProgressIndicator(color: Colors.orange),
+                  ),
                 const SizedBox(height: 15),
-                // User Name (fetched from Firestore)
+                // User Name
                 Text(
                   _nameController.text.isNotEmpty
                       ? _nameController.text
@@ -336,8 +361,8 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget buildEditableField(IconData icon, String label,
-      TextEditingController controller, bool enabled) {
+  Widget buildEditableField(
+      IconData icon, String label, TextEditingController controller, bool enabled) {
     return TextField(
       controller: controller,
       enabled: enabled,
@@ -378,8 +403,7 @@ class _ProfilePageState extends State<ProfilePage> {
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
         icon: Icon(icon, color: Colors.white),
         label: Text(text,
@@ -388,4 +412,3 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
-
