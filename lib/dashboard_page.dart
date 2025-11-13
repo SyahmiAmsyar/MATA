@@ -5,6 +5,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'profile_page.dart';
 import 'login_page.dart';
@@ -86,7 +88,6 @@ class _DashboardPageState extends State<DashboardPage>
 
       if (res.statusCode == 200) {
         if (!_liveFootageForced) {
-          // ✅ Starting the stream
           setState(() => _liveFootageForced = true);
 
           await Navigator.push(
@@ -99,7 +100,6 @@ class _DashboardPageState extends State<DashboardPage>
             ),
           );
         } else {
-          // ✅ Stopping the stream
           setState(() => _liveFootageForced = false);
           _showSnackBar("Live stream stopped.");
         }
@@ -147,10 +147,30 @@ class _DashboardPageState extends State<DashboardPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              "👋 Welcome back, $_username!",
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            // ✅ Real-time username listener
+            StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(FirebaseAuth.instance.currentUser!.uid)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Text(
+                    "👋 Welcome back, $_username!",
+                    style: const TextStyle(
+                        fontSize: 24, fontWeight: FontWeight.bold),
+                  );
+                }
+                final data = snapshot.data!;
+                final username = data['username'] ?? _username;
+                return Text(
+                  "👋 Welcome back, $username!",
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold),
+                );
+              },
             ),
+
             const SizedBox(height: 16),
 
             // Connection & Battery Cards
