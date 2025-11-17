@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ Added for Firestore
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'signup_page.dart';
@@ -35,13 +35,11 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      // ✅ Firebase sign-in
       final userCredential = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: password);
 
       final uid = userCredential.user!.uid;
 
-      // ✅ Fetch username from Firestore
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
@@ -51,28 +49,25 @@ class _LoginPageState extends State<LoginPage> {
       if (snapshot.exists && snapshot.data()!.containsKey('username')) {
         username = snapshot.data()!['username'];
       } else {
-        // fallback: take email prefix
         username = email.contains('@') ? email.split('@')[0] : email;
       }
 
-      // ✅ Save login state and username
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('loggedIn', true);
       await prefs.setString('username', username);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Welcome, $username!")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Welcome, $username!")));
 
-      // ✅ Navigate to Dashboard
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const DashboardPage()),
       );
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? "Login failed")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? "Login failed")));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Something went wrong. Try again.")),
@@ -100,13 +95,13 @@ class _LoginPageState extends State<LoginPage> {
               final email = emailController.text.trim();
               if (email.isNotEmpty) {
                 try {
-                  await FirebaseAuth.instance
-                      .sendPasswordResetEmail(email: email);
+                  await FirebaseAuth.instance.sendPasswordResetEmail(
+                    email: email,
+                  );
                   Navigator.pop(context);
 
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text("Password reset link sent!")),
+                    const SnackBar(content: Text("Password reset link sent!")),
                   );
                 } on FirebaseAuthException catch (e) {
                   Navigator.pop(context);
@@ -141,13 +136,13 @@ class _LoginPageState extends State<LoginPage> {
         ),
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 25.0),
+            padding: const EdgeInsets.symmetric(horizontal: 25.0, vertical: 40),
             child: Column(
               children: [
                 const Text(
                   'M.A.T.A',
                   style: TextStyle(
-                    fontSize: 34,
+                    fontSize: 36,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     letterSpacing: 2,
@@ -175,10 +170,11 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 30),
                 Card(
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
-                  elevation: 8,
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  elevation: 12,
                   child: Padding(
-                    padding: const EdgeInsets.all(20.0),
+                    padding: const EdgeInsets.all(25.0),
                     child: Column(
                       children: [
                         _buildInputField(
@@ -186,11 +182,13 @@ class _LoginPageState extends State<LoginPage> {
                           _emailController,
                           icon: Icons.email,
                         ),
-                        const SizedBox(height: 15),
-                        _buildPasswordField(),
                         const SizedBox(height: 20),
+                        _buildPasswordField(),
+                        const SizedBox(height: 25),
                         _isLoading
-                            ? const CircularProgressIndicator()
+                            ? const CircularProgressIndicator(
+                                color: Colors.orange,
+                              )
                             : _buildButton("LOGIN", _login),
                         const SizedBox(height: 10),
                         TextButton(
@@ -205,19 +203,22 @@ class _LoginPageState extends State<LoginPage> {
                 RichText(
                   text: TextSpan(
                     text: "Don’t have an account? ",
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
                     children: [
                       TextSpan(
                         text: "Sign up",
                         style: const TextStyle(
-                            color: Colors.orange,
-                            fontWeight: FontWeight.bold),
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                         recognizer: TapGestureRecognizer()
                           ..onTap = () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) => const SignUpPage()),
+                                builder: (context) => const SignUpPage(),
+                              ),
                             );
                           },
                       ),
@@ -232,16 +233,21 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildInputField(String label, TextEditingController controller,
-      {IconData? icon}) {
+  Widget _buildInputField(
+    String label,
+    TextEditingController controller, {
+    IconData? icon,
+  }) {
     return TextField(
       controller: controller,
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.blueAccent),
         labelText: label,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 18,
+          horizontal: 15,
         ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
       ),
     );
   }
@@ -253,12 +259,15 @@ class _LoginPageState extends State<LoginPage> {
       decoration: InputDecoration(
         prefixIcon: const Icon(Icons.lock, color: Colors.blueAccent),
         labelText: "Password",
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 18,
+          horizontal: 15,
         ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
         suffixIcon: IconButton(
           icon: Icon(
-              _obscurePassword ? Icons.visibility_off : Icons.visibility),
+            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+          ),
           onPressed: () {
             setState(() => _obscurePassword = !_obscurePassword);
           },
@@ -273,7 +282,7 @@ class _LoginPageState extends State<LoginPage> {
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blueAccent,
+          backgroundColor: Colors.orange,
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
