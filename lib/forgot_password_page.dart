@@ -17,7 +17,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   Future<void> _sendResetEmail() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      setState(() => _statusText = 'Please enter your email.');
+      setState(() => _statusText = '⚠️ Please enter your email.');
       return;
     }
 
@@ -30,15 +30,21 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
 
       setState(() {
-        _statusText = 'Reset link sent to $email';
+        _statusText = '✅ Reset link sent to $email';
       });
     } on FirebaseAuthException catch (e) {
-      setState(() => _statusText = e.message ?? 'Error sending reset email');
+      setState(() => _statusText = e.message ?? '❌ Error sending reset email');
     } catch (_) {
-      setState(() => _statusText = 'Something went wrong. Try again.');
+      setState(() => _statusText = '❌ Something went wrong. Try again.');
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
   }
 
   @override
@@ -60,7 +66,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  child: const Text('Back', style: TextStyle(color: Colors.white)),
+                  child: const Text(
+                    'Back',
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
               ),
               const SizedBox(height: 30),
@@ -68,12 +77,17 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 children: [
                   const SizedBox(
                     width: 90,
-                    child: Text('Email :',
-                        style: TextStyle(color: Colors.white, fontSize: 16)),
+                    child: Text(
+                      'Email :',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
                   ),
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.grey[300],
                         borderRadius: BorderRadius.circular(10),
@@ -104,12 +118,17 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   ),
                   child: _isSending
                       ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                      : const Text('Send Reset Link',
-                      style: TextStyle(color: Colors.white, fontSize: 16)),
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Send Reset Link',
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        ),
                 ),
               ),
               if (_statusText != null) ...[
@@ -121,7 +140,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 ),
               ],
               const Spacer(),
-              const Icon(Icons.shield_outlined, size: 100, color: Colors.black38),
+              const Icon(
+                Icons.shield_outlined,
+                size: 100,
+                color: Colors.black38,
+              ),
             ],
           ),
         ),
