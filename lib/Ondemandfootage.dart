@@ -11,21 +11,28 @@ class Ondemandfootage extends StatefulWidget {
 }
 
 class _OndemandfootageState extends State<Ondemandfootage> {
-  late final WebViewController _controller; // Updated to new API
-  final String streamUrl = 'http://172.20.10.10:5000/video_feed';
-  final String controlUrl = 'http://172.20.10.10:5000/stream';
+  late final WebViewController _controller;
+
+  // URL for the video feed (M-JPEG stream)
+  final String streamUrl = 'https://matavision.ngrok.app/video_feed';
+
+  // ✅ CORRECTION: URL for sending control commands ('start'/'stop').
+  // This is typically the base URL + /stream, not /video_feed/stream.
+  final String controlUrl = 'https://matavision.ngrok.app/stream';
+
   bool isStopping = false;
 
   @override
   void initState() {
     super.initState();
 
-    // Initialize WebViewController with WebViewController constructor (new API)
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0x00000000))
       ..loadRequest(Uri.parse(streamUrl));
   }
 
+  /// Sends a 'stop' command to the server's control endpoint.
   Future<void> stopStream() async {
     if (isStopping) return;
     setState(() => isStopping = true);
@@ -38,38 +45,47 @@ class _OndemandfootageState extends State<Ondemandfootage> {
       );
 
       if (response.statusCode == 200) {
+        // Optionally clear the cache and show a "stopped" message
         await _controller.clearCache();
         await _controller.loadHtmlString(
-            "<html><body><h3>Stream stopped.</h3></body></html>");
+          "<html><body><div style='display: flex; justify-content: center; align-items: center; height: 100vh; color: white; background-color: black; font-size: 20px;'>Live Stream Stopped.</div></body></html>",
+        );
 
+        // Wait briefly before closing the page
         await Future.delayed(const Duration(seconds: 1));
 
         if (mounted) Navigator.pop(context);
       } else {
+        // Show failure message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content: Text(
-                    "⚠️ Failed to stop stream (${response.statusCode})")),
+              content: Text(
+                "⚠️ Failed to stop stream (HTTP ${response.statusCode})",
+              ),
+            ),
           );
-          setState(() => isStopping = false);
         }
       }
     } catch (e) {
+      // Show connection error message
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("⚠️ Error: $e")),
-        );
-        setState(() => isStopping = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("⚠️ Connection Error: $e")));
       }
     }
+
+    if (mounted) setState(() => isStopping = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Live Stream'),
+        title: const Text("Live Stream"),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -80,12 +96,15 @@ class _OndemandfootageState extends State<Ondemandfootage> {
               isStopping ? Icons.hourglass_top : Icons.stop,
               color: Colors.red,
             ),
+            // Disable the button while the stop command is being sent
             onPressed: isStopping ? null : stopStream,
           ),
         ],
       ),
-      body: WebViewWidget(
-        controller: _controller, // New WebViewWidget usage
+      // Ensure WebView fills the screen
+      body: Container(
+        color: Colors.black,
+        child: WebViewWidget(controller: _controller),
       ),
     );
   }
