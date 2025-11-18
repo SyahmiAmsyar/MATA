@@ -1,6 +1,6 @@
+import 'dart:async'; // Required for Timer
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:battery_plus/battery_plus.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
@@ -8,10 +8,36 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+// Assuming these files exist in your project structure
 import 'profile_page.dart';
 import 'login_page.dart';
 import 'LiveGpsPage.dart';
-import 'history_page.dart';
+import 'reset_password_page.dart';
+
+// =========================================================================
+// CENTRALIZED UTILITY AND CONSTANTS (Simplified)
+// =========================================================================
+
+/// Displays a standardized SnackBar message across the application.
+void showAppSnackBar(
+  BuildContext context,
+  String message, {
+  bool isError = false,
+}) {
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      backgroundColor: isError ? Colors.red : Colors.green,
+    ),
+  );
+}
+
+// ❌ REMOVED: piUrlKey is no longer necessary as the URL is fixed/hardcoded.
+
+// =========================================================================
+// 2. Dashboard Page Implementation (FIXED PI URL)
+// =========================================================================
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -22,116 +48,210 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage>
     with SingleTickerProviderStateMixin {
-  final Battery _battery = Battery();
-  int _batteryLevel = 100;
-  bool _isDeviceConnected = true;
-  bool _liveFootageForced = false;
+  // PI STATUS VARIABLES
+  int _piBatteryLevel = 0;
+  bool _isPiCharging = false;
+  bool _isDeviceConnected = false;
 
+  bool _liveFootageForced = false;
   String _username = "";
-  final String piUrl = "http://172.20.10.10:5000"; // ✅ Pi IP or ngrok URL
+
+  // ✅ PI URL is now hardcoded and fixed
+  final String _piUrl = "https://matavision.ngrok.app";
+
+  Timer? _statusUpdateTimer;
 
   late AnimationController _controller;
   late Animation<double> _pulseAnimation;
 
+  // ❌ REMOVED: _dialogPiUrlController
+
   @override
   void initState() {
     super.initState();
+    // ✅ Simplified setup
+    _startTimerAndInitialFetch();
     _loadUsername();
-    _updateBatteryLevel();
-    _battery.onBatteryStateChanged.listen((_) => _updateBatteryLevel());
 
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    _pulseAnimation = Tween<double>(begin: 0.9, end: 1.1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    _pulseAnimation = Tween<double>(
+      begin: 0.9,
+      end: 1.1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  /// Starts the timer and fetches initial status.
+  Future<void> _startTimerAndInitialFetch() async {
+    // ❌ REMOVED: _loadPiUrl is not needed.
+
+    await _fetchPiStatus();
+
+    _statusUpdateTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (Timer t) => _fetchPiStatus(),
     );
+  }
+
+  // ❌ REMOVED: _loadPiUrl method
+  // ❌ REMOVED: _savePiUrl method (moved to the new dialog's logic)
+
+  /// Fetches the Raspberry Pi's battery and connection status.
+  Future<void> _fetchPiStatus() async {
+    // URL check is now simpler as it is hardcoded
+    if (_piUrl.isEmpty) {
+      if (mounted) setState(() => _isDeviceConnected = false);
+      showAppSnackBar(context, "⚠ Internal PI URL is missing (Code Error).");
+      return;
+    }
+
+    try {
+      final url = Uri.parse("$_piUrl/status");
+      final res = await http.get(url).timeout(const Duration(seconds: 3));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+
+        if (mounted) {
+          setState(() {
+            _isDeviceConnected = true;
+            _piBatteryLevel = data['battery_level'] ?? 0;
+            _isPiCharging = data['is_charging'] ?? false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isDeviceConnected = false);
+        print("API Status Error: ${res.statusCode}");
+      }
+    } on TimeoutException {
+      if (mounted) setState(() => _isDeviceConnected = false);
+      print("Connection Timeout to $_piUrl");
+    } catch (e) {
+      print("Failed to fetch PI status: $e");
+      if (mounted) setState(() => _isDeviceConnected = false);
+    }
   }
 
   Future<void> _loadUsername() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() => _username = prefs.getString('username') ?? 'User');
-  }
-
-  Future<void> _updateBatteryLevel() async {
-    final level = await _battery.batteryLevel;
-    if (mounted) setState(() => _batteryLevel = level);
+    if (mounted)
+      setState(() => _username = prefs.getString('username') ?? 'User');
   }
 
   Future<void> _logout() async {
+    await FirebaseAuth.instance.signOut();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('loggedIn');
     await prefs.remove('username');
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginPage()),
-    );
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+      );
+    }
   }
 
-  /// ✅ Toggle live stream start / stop safely
+  /// Toggle live stream start / stop safely
   Future<void> _toggleLiveFootageForce() async {
+    if (!_isDeviceConnected) {
+      showAppSnackBar(
+        context,
+        "❌ Cannot start stream, device is disconnected.",
+        isError: true,
+      );
+      return;
+    }
+
     final action = _liveFootageForced ? "stop" : "start";
-    final url = Uri.parse("$piUrl/stream");
+    final url = Uri.parse("$_piUrl/stream");
 
     try {
       print("📡 Sending $action request to $url ...");
-      final res = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"action": action}),
-      );
-
-      print("✅ Response ${res.statusCode}: ${res.body}");
+      final res = await http
+          .post(
+            url,
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({"action": action}),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (res.statusCode == 200) {
         if (!_liveFootageForced) {
-          setState(() => _liveFootageForced = true);
+          if (mounted) setState(() => _liveFootageForced = true);
 
           await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => LiveStreamPage(
-                streamUrl: "$piUrl/video_feed",
+                streamUrl: "$_piUrl/video_feed",
                 onStop: () => setState(() => _liveFootageForced = false),
               ),
             ),
           );
         } else {
-          setState(() => _liveFootageForced = false);
-          _showSnackBar("Live stream stopped.");
+          if (mounted) setState(() => _liveFootageForced = false);
+          showAppSnackBar(context, "Live stream stop signal sent.");
         }
       } else {
-        _showSnackBar("Failed to toggle stream: ${res.statusCode}");
+        showAppSnackBar(
+          context,
+          "Failed to toggle stream: ${res.statusCode}",
+          isError: true,
+        );
       }
     } catch (e) {
       print("❌ Error: $e");
-      _showSnackBar("Error: $e");
+      showAppSnackBar(context, "Connection Error: $e", isError: true);
     }
   }
 
-  void _showSnackBar(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _showAppInfoDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("App Information"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Version: 1.0.0 (Build 20251118)"),
+            const SizedBox(height: 8),
+            Text("Device URL: $_piUrl (Fixed)"), // Updated text
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
   }
+
+  // ❌ REMOVED: _buildEditPiUrlDialog method
 
   @override
   void dispose() {
+    _statusUpdateTimer?.cancel();
     _controller.dispose();
+    // ❌ REMOVED: _dialogPiUrlController disposal
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    const double cardHeight = 120;
-
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         backgroundColor: const Color(0xFF0073B1),
         title: const Text("Dashboard"),
         actions: [
+          // ❌ REMOVED: Settings Icon
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: () => Navigator.push(
@@ -147,226 +267,240 @@ class _DashboardPageState extends State<DashboardPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ✅ Real-time username listener
+            // 1. Welcome Header
             StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(FirebaseAuth.instance.currentUser!.uid)
-                  .snapshots(),
+              stream: FirebaseAuth.instance.currentUser != null
+                  ? FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(FirebaseAuth.instance.currentUser!.uid)
+                        .snapshots()
+                  : null,
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return Text(
-                    "👋 Welcome back, $_username!",
-                    style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.bold),
-                  );
-                }
-                final data = snapshot.data!;
-                final username = data['username'] ?? _username;
+                final String displayUsername =
+                    (snapshot.hasData && snapshot.data!.exists)
+                    ? (snapshot.data!['username'] ?? _username)
+                    : _username;
                 return Text(
-                  "👋 Welcome back, $username!",
+                  "👋 Welcome back, $displayUsername!",
                   style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.bold),
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 );
               },
             ),
 
             const SizedBox(height: 16),
 
-            // Connection & Battery Cards
-            SizedBox(
-              height: cardHeight,
-              child: Row(
+            // 2. Main Connection Status
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Device Status:",
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _isDeviceConnected ? "CONNECTED" : "DISCONNECTED",
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: _isDeviceConnected
+                                ? Colors.green[700]
+                                : Colors.red[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    ScaleTransition(
+                      scale: _pulseAnimation,
+                      child: FaIcon(
+                        _isDeviceConnected
+                            ? FontAwesomeIcons.glasses
+                            : FontAwesomeIcons.wifi,
+                        color: _isDeviceConnected ? Colors.green : Colors.red,
+                        size: 40,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // 3. Action Grid (Compact 2x2 layout)
+            Expanded(
+              child: GridView.count(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                padding: EdgeInsets.zero,
                 children: [
-                  _buildGradientCard(
-                    title: "Connection",
-                    value: _isDeviceConnected ? "CONNECTED" : "DISCONNECTED",
-                    icon: FontAwesomeIcons.glasses,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF00C853), Color(0xFFB9F6CA)],
+                  // Live GPS
+                  _buildGridActionButton(
+                    icon: Icons.location_on,
+                    label: "Live GPS",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LiveGpsPage(),
+                      ),
+                    ),
+                    color: const Color(0xFF0073B1),
+                  ),
+
+                  // Start/Stop Live Footage
+                  _buildGridActionButton(
+                    icon: _liveFootageForced
+                        ? Icons.videocam
+                        : Icons.videocam_off,
+                    label: _liveFootageForced ? "Stop Live" : "Start Live",
+                    onTap: _toggleLiveFootageForce,
+                    color: _liveFootageForced ? Colors.red : Colors.green,
+                  ),
+
+                  // Battery Status (Uses PI Battery Status)
+                  _buildGridInfoTile(
+                    icon: _isPiCharging ? Icons.power : Icons.battery_full,
+                    label: "Battery Status",
+                    value: _isDeviceConnected ? "$_piBatteryLevel%" : "--%",
+                    gradient: LinearGradient(
+                      colors: [
+                        _isPiCharging
+                            ? Colors.lightGreen
+                            : (_piBatteryLevel > 20
+                                  ? const Color(0xFF2979FF)
+                                  : Colors.orange),
+                        _isPiCharging ? Colors.green : const Color(0xFF82B1FF),
+                      ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  _buildGradientCard(
-                    title: "Battery",
-                    value: "$_batteryLevel%",
-                    icon: Icons.battery_full,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF2979FF), Color(0xFF82B1FF)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+
+                  // App Info (Remains)
+                  _buildGridActionButton(
+                    icon: Icons.info_outline,
+                    label: "App Info",
+                    onTap: _showAppInfoDialog,
+                    color: Colors.blueGrey,
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(height: 24),
-
-            // Action Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildActionButton(
-                  icon: Icons.location_on,
-                  label: "Live GPS",
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LiveGpsPage()),
-                  ),
-                ),
-                _buildActionButton(
-                  icon: Icons.history,
-                  label: "History",
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const HistoryPage()),
-                  ),
-                ),
-                _buildActionButton(
-                  icon: _liveFootageForced
-                      ? Icons.videocam
-                      : Icons.videocam_off,
-                  label: _liveFootageForced ? "Stop Live" : "Start Live",
-                  onTap: _toggleLiveFootageForce,
-                  color: _liveFootageForced ? Colors.red : Colors.green,
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Recent Activity
-            Expanded(
-              child: Card(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                elevation: 6,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("Recent Activity",
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: ListView(
-                          children: const [
-                            ListTile(
-                              leading: Icon(Icons.location_on),
-                              title: Text("Location updated"),
-                              subtitle: Text("11:30 AM"),
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.battery_charging_full),
-                              title: Text("Battery charged to 85%"),
-                              subtitle: Text("08:45 AM"),
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.device_hub),
-                              title: Text("Device connected"),
-                              subtitle: Text("09:15 AM"),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  // Status Cards
-  Widget _buildGradientCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required LinearGradient gradient,
-  }) {
-    return Expanded(
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            FaIcon(icon, color: Colors.white, size: 28),
-            const SizedBox(height: 8),
-            Text(title,
-                style: const TextStyle(
-                    color: Colors.white70, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 5),
-            Text(value,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Buttons
-  Widget _buildActionButton({
+  // Action Button for Grid
+  Widget _buildGridActionButton({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
     Color color = const Color(0xFF0073B1),
   }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.5),
-                blurRadius: 6,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: Colors.white, size: 28),
-              const SizedBox(height: 8),
-              Text(label,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
-            ],
-          ),
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.5),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white, size: 40),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Info Tile for Grid (e.g., Battery)
+  Widget _buildGridInfoTile({
+    required IconData icon,
+    required String label,
+    required String value,
+    required LinearGradient gradient,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          FaIcon(icon, color: Colors.white, size: 36),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ✅ Safe Live Stream Page
+// =========================================================================
+// 3. Safe Live Stream Page (Uses Fixed PI URL)
+// =========================================================================
+
 class LiveStreamPage extends StatefulWidget {
   final String streamUrl;
   final VoidCallback onStop;
@@ -384,6 +518,8 @@ class LiveStreamPage extends StatefulWidget {
 class _LiveStreamPageState extends State<LiveStreamPage> {
   late final WebViewController _controller;
   bool _isStopping = false;
+  // ✅ Hardcoded PI URL for sending the stop command
+  final String _piUrl = "https://matavision.ngrok.app";
 
   @override
   void initState() {
@@ -397,12 +533,16 @@ class _LiveStreamPageState extends State<LiveStreamPage> {
     if (_isStopping) return;
     setState(() => _isStopping = true);
 
+    // ❌ REMOVED: SharedPreferences logic for Pi URL. Using hardcoded _piUrl.
+
     try {
-      final res = await http.post(
-        Uri.parse("http://172.20.10.10:5000/stream"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"action": "stop"}),
-      );
+      final res = await http
+          .post(
+            Uri.parse("$_piUrl/stream"), // Use the fixed Pi URL
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({"action": "stop"}),
+          )
+          .timeout(const Duration(seconds: 5));
       print("🔴 Stream stop response: ${res.body}");
     } catch (e) {
       print("❌ Error stopping stream: $e");
@@ -419,6 +559,7 @@ class _LiveStreamPageState extends State<LiveStreamPage> {
       appBar: AppBar(
         title: const Text("Live Stream"),
         backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.stop, color: Colors.red),
