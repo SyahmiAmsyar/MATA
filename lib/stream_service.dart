@@ -2,20 +2,33 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class StreamService {
-  final String baseUrl = "http://172.20.10.10";  // Your Pi's IP
+  // ✅ FIX: Append the '/stream' endpoint to the control URL.
+  // The server expects the command at this specific route.
+  final String controlUrl = "https://matavision.ngrok.app/stream";
 
-  Future<void> controlStream(String action) async {
-    final url = Uri.parse("$baseUrl/stream");
-    final response = await http.post(
-      url,
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"action": action}),
-    );
+  /// Sends a command ('start' or 'stop') to the backend stream control endpoint.
+  Future<bool> controlStream(String action) async {
+    final url = Uri.parse(controlUrl);
+    try {
+      print("📡 Sending '$action' request to $url ...");
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"action": action}),
+      );
 
-    if (response.statusCode == 200) {
-      print("Stream $action command sent successfully");
-    } else {
-      print("Failed to send command: ${response.statusCode}");
+      print("✅ Response ${response.statusCode}: ${response.body}");
+
+      if (response.statusCode == 200) {
+        print("Stream $action command sent successfully");
+        return true;
+      } else {
+        print("Failed to send command: ${response.statusCode}");
+        return false;
+      }
+    } catch (e) {
+      print("❌ Error sending stream command: $e");
+      return false;
     }
   }
 }
