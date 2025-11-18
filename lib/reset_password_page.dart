@@ -11,7 +11,8 @@ class ResetPasswordPage extends StatefulWidget {
 class _ResetPasswordPageState extends State<ResetPasswordPage> {
   final TextEditingController _oldPasswordController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
 
   bool _obscureOld = true;
   bool _obscureNew = true;
@@ -27,8 +28,9 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       return;
     }
 
-    final strongRegex =
-    RegExp(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#\$&*~]).{8,}$');
+    final strongRegex = RegExp(
+      r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#\$&*~]).{8,}$',
+    );
     final mediumRegex = RegExp(r'^(?=.*[A-Za-z])(?=.*\d).{6,}$');
 
     if (strongRegex.hasMatch(password)) {
@@ -53,9 +55,9 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     }
 
     if (newPassword != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ Passwords do not match')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('❌ Passwords do not match')));
       return;
     }
 
@@ -63,7 +65,8 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-              '⚠️ Weak password. Use at least 8 chars, upper, lower, number & special char.'),
+            '⚠️ Weak password. Use at least 8 chars, upper, lower, number & special char.',
+          ),
         ),
       );
       return;
@@ -89,13 +92,13 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
         Navigator.pop(context);
       }
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("⚠️ ${e.message}")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("⚠️ ${e.message}")));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Unexpected error: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Unexpected error: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -205,17 +208,17 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                     ),
                     child: _isLoading
                         ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : const Text(
-                      "Update Password",
-                      style: TextStyle(fontSize: 16, color: Colors.white),
-                    ),
+                            "Update Password",
+                            style: TextStyle(fontSize: 16, color: Colors.white),
+                          ),
                   ),
                 ),
 
@@ -239,8 +242,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(color: Colors.white, fontSize: 16)),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 16)),
         const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
@@ -260,8 +262,10 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             onChanged: onChanged,
             style: const TextStyle(color: Colors.black),
             decoration: InputDecoration(
-              contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 14,
+              ),
               border: InputBorder.none,
               suffixIcon: IconButton(
                 icon: Icon(
@@ -277,4 +281,3 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     );
   }
 }
-
