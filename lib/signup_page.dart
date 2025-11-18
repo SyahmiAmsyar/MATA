@@ -18,6 +18,8 @@ class _SignUpPageState extends State<SignUpPage> {
 
   bool _obscurePassword = true;
   bool _isLoading = false;
+  String _passwordStrengthMessage = '';
+  Color _passwordStrengthColor = Colors.red;
 
   Future<void> _signUp() async {
     final name = _nameController.text.trim();
@@ -32,24 +34,36 @@ class _SignUpPageState extends State<SignUpPage> {
       return;
     }
 
+    final passwordRegex = RegExp(
+      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$',
+    );
+
+    if (!passwordRegex.hasMatch(password)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Password must be at least 8 characters, include uppercase, lowercase, number, and special character.",
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      UserCredential userCredential =
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
 
       await FirebaseFirestore.instance
           .collection('users')
           .doc(userCredential.user!.uid)
           .set({
-        "name": name,
-        "username": username,
-        "email": email,
-        "createdAt": FieldValue.serverTimestamp(),
-      });
+            "name": name,
+            "username": username,
+            "email": email,
+            "createdAt": FieldValue.serverTimestamp(),
+          });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Account created successfully!")),
@@ -60,15 +74,33 @@ class _SignUpPageState extends State<SignUpPage> {
         MaterialPageRoute(builder: (context) => const LoginPage()),
       );
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? "Signup failed")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? "Signup failed")));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Something went wrong. Try again.")),
       );
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+  String _getPasswordStrength(String password) {
+    if (password.isEmpty) return '';
+    final strongRegex = RegExp(
+      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$',
+    );
+    final mediumRegex = RegExp(r'^(?=.*[a-zA-Z])(?=.*\d).{6,}$');
+    if (strongRegex.hasMatch(password)) {
+      _passwordStrengthColor = Colors.green;
+      return "Strong password";
+    } else if (mediumRegex.hasMatch(password)) {
+      _passwordStrengthColor = Colors.orange;
+      return "Medium strength password";
+    } else {
+      _passwordStrengthColor = Colors.red;
+      return "Weak password";
     }
   }
 
@@ -86,13 +118,13 @@ class _SignUpPageState extends State<SignUpPage> {
         ),
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 25.0),
+            padding: const EdgeInsets.symmetric(horizontal: 25.0, vertical: 40),
             child: Column(
               children: [
                 const Text(
                   'Sign Up',
                   style: TextStyle(
-                    fontSize: 32,
+                    fontSize: 36,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     letterSpacing: 2,
@@ -104,47 +136,70 @@ class _SignUpPageState extends State<SignUpPage> {
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 16, color: Colors.white70),
                 ),
-                const SizedBox(height: 25),
-
-                // Signup Card
+                const SizedBox(height: 30),
                 Card(
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
-                  elevation: 8,
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  elevation: 12,
                   child: Padding(
-                    padding: const EdgeInsets.all(20.0),
+                    padding: const EdgeInsets.all(25.0),
                     child: Column(
                       children: [
                         _buildInputField(
-                            "Full Name", _nameController, Icons.person),
-                        const SizedBox(height: 15),
-                        _buildInputField(
-                            "Username", _usernameController, Icons.alternate_email),
-                        const SizedBox(height: 15),
-                        _buildInputField(
-                            "Email", _emailController, Icons.email),
-                        const SizedBox(height: 15),
-                        _buildPasswordField(),
+                          "Full Name",
+                          _nameController,
+                          Icons.person,
+                        ),
                         const SizedBox(height: 20),
+                        _buildInputField(
+                          "Username",
+                          _usernameController,
+                          Icons.alternate_email,
+                        ),
+                        const SizedBox(height: 20),
+                        _buildInputField(
+                          "Email",
+                          _emailController,
+                          Icons.email,
+                        ),
+                        const SizedBox(height: 20),
+                        _buildPasswordField(),
+                        const SizedBox(height: 25),
                         _isLoading
-                            ? const CircularProgressIndicator()
+                            ? const CircularProgressIndicator(
+                                color: Colors.orange,
+                              )
                             : _buildButton("SIGN UP", _signUp),
                       ],
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
                 TextButton(
                   onPressed: () {
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (context) => const LoginPage()),
+                      MaterialPageRoute(
+                        builder: (context) => const LoginPage(),
+                      ),
                     );
                   },
-                  child: const Text(
-                    "Already have an account? Login",
-                    style: TextStyle(color: Colors.white),
+                  child: RichText(
+                    text: const TextSpan(
+                      text: "Already have an account? ",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      children: [
+                        TextSpan(
+                          text: "Login",
+                          style: TextStyle(
+                            color: Color(0xFFFFA500),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -156,37 +211,60 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   Widget _buildInputField(
-      String label, TextEditingController controller, IconData icon) {
+    String label,
+    TextEditingController controller,
+    IconData icon,
+  ) {
     return TextField(
       controller: controller,
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.blueAccent),
         labelText: label,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 18,
+          horizontal: 15,
         ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
       ),
     );
   }
 
   Widget _buildPasswordField() {
-    return TextField(
-      controller: _passwordController,
-      obscureText: _obscurePassword,
-      decoration: InputDecoration(
-        prefixIcon: const Icon(Icons.lock, color: Colors.blueAccent),
-        labelText: "Password",
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-        ),
-        suffixIcon: IconButton(
-          icon: Icon(
-              _obscurePassword ? Icons.visibility_off : Icons.visibility),
-          onPressed: () {
-            setState(() => _obscurePassword = !_obscurePassword);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _passwordController,
+          obscureText: _obscurePassword,
+          onChanged: (value) {
+            setState(() {
+              _passwordStrengthMessage = _getPasswordStrength(value);
+            });
           },
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.lock, color: Colors.blueAccent),
+            labelText: "Password",
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 18,
+              horizontal: 15,
+            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword ? Icons.visibility_off : Icons.visibility,
+              ),
+              onPressed: () {
+                setState(() => _obscurePassword = !_obscurePassword);
+              },
+            ),
+          ),
         ),
-      ),
+        const SizedBox(height: 5),
+        Text(
+          _passwordStrengthMessage,
+          style: TextStyle(color: _passwordStrengthColor),
+        ),
+      ],
     );
   }
 
@@ -198,8 +276,9 @@ class _SignUpPageState extends State<SignUpPage> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.orange,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
         ),
         child: Text(
           text,
@@ -209,4 +288,3 @@ class _SignUpPageState extends State<SignUpPage> {
     );
   }
 }
-
